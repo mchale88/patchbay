@@ -1,0 +1,36 @@
+# Template: install.sh substitutes @PREFIX@, @STATE_DIR@, @ENV_FILE@, @USER@
+[Unit]
+Description=Patchbay (headless, REST/WebSocket controlled)
+Documentation=file://@PREFIX@/README.md
+Wants=network-online.target avahi-daemon.service
+After=network-online.target avahi-daemon.service
+
+[Service]
+Type=simple
+User=@USER@
+Group=@USER@
+Environment=STATE_FILE=@STATE_DIR@/state.json
+Environment=HOME=@STATE_DIR@
+Environment=PYTHONUNBUFFERED=1
+# Private libs (libndi, vendored libavahi-client) copied by install.sh
+Environment=LD_LIBRARY_PATH=@PREFIX@/lib
+EnvironmentFile=-@ENV_FILE@
+ExecStart=@PREFIX@/venv/bin/python -m patchbay
+Restart=on-failure
+RestartSec=3
+
+# Hardening (no media flows through this process; it only needs the network)
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=@STATE_DIR@
+ProtectHome=read-only
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+LockPersonality=yes
+
+[Install]
+WantedBy=multi-user.target

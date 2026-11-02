@@ -1,0 +1,598 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Patchbay</title>
+<script>
+try { const t = localStorage.getItem("patchbayTheme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch (e) {}
+</script>
+<style>
+:root {
+  --bg: #f4f5f7; --panel: #ffffff; --panel-2: #f0f1f4; --text: #1b1d22; --muted: #6a7080;
+  --border: #dde0e6; --accent: #2f6fed; --accent-text: #fff; --live: #1f9d55; --pending: #c98a04;
+  --idle: #8a90a0; --danger: #d64545; --staged: #8e44ec; --shadow: 0 1px 2px rgba(0,0,0,.06);
+  color-scheme: light;
+}
+/* Dark theme: charcoal background, dark-gray panels, white text and primary buttons.
+   Applies when the OS prefers dark (theme "auto") or when the user picks "dark". */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #1c1d1f; --panel: #2a2b2e; --panel-2: #343539; --text: #ffffff; --muted: #a4a6ab;
+    --border: #404246; --accent: #ffffff; --accent-text: #1c1d1f; --live: #3ecf74; --pending: #e8b03a;
+    --idle: #76797f; --danger: #f78585; --staged: #b98cf7; --shadow: 0 1px 3px rgba(0,0,0,.35);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+    --bg: #1c1d1f; --panel: #2a2b2e; --panel-2: #343539; --text: #ffffff; --muted: #a4a6ab;
+    --border: #404246; --accent: #ffffff; --accent-text: #1c1d1f; --live: #3ecf74; --pending: #e8b03a;
+    --idle: #76797f; --danger: #f78585; --staged: #b98cf7; --shadow: 0 1px 3px rgba(0,0,0,.35);
+    color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg); color: var(--text); }
+header { position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; gap: 12px;
+  align-items: center; padding: 10px 20px; background: var(--panel); border-bottom: 1px solid var(--border); }
+header h1 { font-size: 16px; margin: 0; font-weight: 650; letter-spacing: .2px; }
+.conn { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--idle); flex: none; }
+.dot.ok { background: var(--live); } .dot.bad { background: var(--danger); }
+.spacer { flex: 1; }
+button, select, input { font: inherit; color: inherit; }
+button { border: 1px solid var(--border); background: var(--panel-2); padding: 6px 12px;
+  border-radius: 6px; cursor: pointer; white-space: nowrap; }
+button:hover { border-color: var(--muted); }
+button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+button.danger { color: var(--danger); }
+button.danger.solid { background: var(--danger); color: #fff; border-color: var(--danger); }
+button.small { padding: 3px 8px; font-size: 12px; }
+button:disabled { opacity: .5; cursor: default; }
+input, select { border: 1px solid var(--border); background: var(--panel); padding: 6px 8px;
+  border-radius: 6px; min-width: 0; }
+label.toggle { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
+main { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 20px; padding: 20px;
+  max-width: 1500px; margin: 0 auto; }
+@media (max-width: 860px) { main { grid-template-columns: 1fr; padding: 16px; } }
+h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .8px; color: var(--muted);
+  margin: 0 0 10px; font-weight: 600; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 12px;
+  box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 8px; border-left: 4px solid var(--idle); }
+.card.live { border-left-color: var(--live); } .card.pending { border-left-color: var(--pending); } .card.error { border-left-color: var(--danger); }
+.card.staged { outline: 2px solid var(--staged); outline-offset: -1px; }
+.card .top { display: flex; align-items: flex-start; gap: 8px; }
+.card .title { font-weight: 650; font-size: 15px; word-break: break-word; }
+.card .sub { color: var(--muted); font-size: 12px; word-break: break-all; }
+.pill { font-size: 11px; padding: 2px 7px; border-radius: 999px; background: var(--panel-2);
+  color: var(--muted); white-space: nowrap; }
+.pill.live { color: var(--live); } .pill.pending { color: var(--pending); } .pill.error { color: var(--danger); } .pill.staged { color: var(--staged); }
+.card select { width: 100%; }
+.card .meta { display: flex; gap: 10px; align-items: center; color: var(--muted); font-size: 12px; }
+.card .actions { display: flex; gap: 6px; margin-left: auto; }
+.panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 12px;
+  margin-bottom: 16px; box-shadow: var(--shadow); }
+.list { list-style: none; margin: 0; padding: 0; }
+.list li { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-top: 1px solid var(--border); }
+.list li:first-child { border-top: 0; }
+.list .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row { display: flex; gap: 6px; }
+.row input { flex: 1; }
+.empty { color: var(--muted); padding: 18px; text-align: center; border: 1px dashed var(--border); border-radius: 10px; }
+.takebar { position: sticky; bottom: 0; display: flex; gap: 10px; align-items: center; justify-content: flex-end;
+  padding: 10px 20px; background: var(--panel); border-top: 2px solid var(--staged); }
+.takebar[hidden] { display: none; }
+.overlay { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: flex; align-items: center;
+  justify-content: center; z-index: 20; padding: 16px; }
+.overlay[hidden] { display: none; }
+#dlg { z-index: 25; }  /* confirm/edit dialogs open on top of the Settings panel */
+.dialog { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 18px;
+  width: 100%; max-width: 380px; display: flex; flex-direction: column; gap: 10px; }
+.dialog h3 { margin: 0; font-size: 16px; }
+.dialog .row { justify-content: flex-end; }
+#toasts { position: fixed; right: 16px; bottom: 16px; display: flex; flex-direction: column; gap: 8px; z-index: 30; }
+.toast { background: var(--text); color: var(--bg); padding: 8px 12px; border-radius: 8px; max-width: 360px;
+  box-shadow: 0 4px 14px rgba(0,0,0,.2); }
+.toast.err { background: var(--danger); color: #fff; }
+a { color: var(--accent); text-underline-offset: 2px; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.dialog.wide { max-width: 640px; max-height: calc(100vh - 32px); overflow: auto; }
+.dialog label.f { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+.dialog label.f input { color: var(--text); font-size: 14px; }
+.err-msg { color: var(--danger); font-size: 13px; min-height: 1em; margin: 0; }
+.hint { color: var(--muted); font-size: 12px; margin: 0; }
+#login { background: var(--bg); }
+#login .dialog { max-width: 340px; box-shadow: 0 8px 30px rgba(0,0,0,.12); }
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); }
+.tabs button { border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none;
+  padding: 6px 10px; color: var(--muted); }
+.tabs button.on { color: var(--text); border-bottom-color: var(--accent); }
+.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+.tbl td, .tbl th { text-align: left; padding: 6px 4px; border-top: 1px solid var(--border); vertical-align: middle; }
+.tbl th { color: var(--muted); font-weight: 500; font-size: 12px; border-top: 0; }
+.tbl td:last-child { text-align: right; white-space: nowrap; }
+.tbl code, .keybox code { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; }
+.keybox { background: var(--panel-2); border: 1px solid var(--staged); border-radius: 8px; padding: 10px;
+  display: flex; flex-direction: column; gap: 6px; }
+.keybox code { word-break: break-all; user-select: all; font-size: 13px; }
+.userbtn { display: inline-flex; align-items: center; gap: 6px; }
+.tagline { color: var(--muted); font-size: 12px; }
+.tagline a, .legal a, .whatis { color: inherit; }
+.whatis { float: right; text-transform: none; letter-spacing: 0; font-weight: 400; }
+footer.legal { color: var(--muted); font-size: 11px; text-align: center; padding: 8px 16px 20px; }
+.legal-mini { font-size: 11px; text-align: center; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Patchbay</h1>
+  <span class="tagline">router for <a href="https://ndi.video/" target="_blank" rel="noopener">NDI®</a> sources</span>
+  <span class="conn"><span class="dot" id="connDot"></span><span id="connText">connecting…</span></span>
+  <span class="spacer"></span>
+  <label class="toggle" title="Stage changes, then apply them together"><input type="checkbox" id="takeMode"> Take mode</label>
+  <button class="primary" id="addBtn">+ Output</button>
+  <a href="/docs" target="_blank" rel="noopener">API docs</a>
+  <button class="small" id="themeBtn"></button>
+  <button class="small userbtn" id="settingsBtn" title="API keys, users, password">⚙ <span id="whoami"></span></button>
+  <button class="small" id="logoutBtn">Log out</button>
+</header>
+
+<main>
+  <section>
+    <h2>Outputs</h2>
+    <div class="grid" id="outputs"></div>
+  </section>
+  <aside>
+    <div class="panel">
+      <h2>Presets</h2>
+      <form class="row" id="presetForm" style="margin-bottom:8px">
+        <input id="presetName" placeholder="Save current routing as…" maxlength="100">
+        <button type="submit">Save</button>
+      </form>
+      <ul class="list" id="presets"></ul>
+    </div>
+    <div class="panel">
+      <h2>NDI sources <span id="srcCount"></span> <a class="whatis" href="https://ndi.video/" target="_blank" rel="noopener">What is NDI?</a></h2>
+      <ul class="list" id="sources"></ul>
+    </div>
+  </aside>
+</main>
+
+<footer class="legal">
+  Patchbay · <a href="https://ndi.video/" target="_blank" rel="noopener">NDI®</a> is a registered trademark of Vizrt NDI AB.
+  Patchbay is not affiliated with or endorsed by Vizrt NDI AB. · <a href="#" id="aboutLink">About &amp; license</a>
+</footer>
+
+<div class="takebar" id="takebar" hidden>
+  <span id="takeCount"></span>
+  <button id="discardBtn">Discard</button>
+  <button class="primary" id="takeBtn">Take</button>
+</div>
+
+<div class="overlay" id="dlg" hidden>
+  <form class="dialog" id="dlgForm">
+    <h3 id="dlgTitle"></h3>
+    <div id="dlgBody"></div>
+    <div class="row">
+      <button type="button" id="dlgCancel">Cancel</button>
+      <button type="submit" class="primary" id="dlgOk">OK</button>
+    </div>
+  </form>
+</div>
+<div class="overlay" id="login" hidden>
+  <form class="dialog" id="loginForm" autocomplete="on">
+    <h3 id="loginTitle">Patchbay</h3>
+    <p class="hint" id="loginHint"></p>
+    <label class="f">Username <input id="lUser" name="username" autocomplete="username" required maxlength="64"></label>
+    <label class="f">Password <input id="lPass" name="password" type="password" autocomplete="current-password" required></label>
+    <label class="f" id="lPass2Wrap" hidden>Repeat password <input id="lPass2" type="password" autocomplete="new-password"></label>
+    <p class="err-msg" id="loginErr"></p>
+    <button type="submit" class="primary" id="loginBtn">Log in</button>
+    <p class="hint legal-mini">Router for <a href="https://ndi.video/" target="_blank" rel="noopener">NDI®</a> sources. NDI® is a registered trademark of Vizrt NDI AB.</p>
+  </form>
+</div>
+
+<div class="overlay" id="settings" hidden>
+  <div class="dialog wide">
+    <div class="row" style="justify-content:space-between;align-items:center">
+      <h3>Settings</h3><button class="small" id="settingsClose">Close</button></div>
+    <div class="tabs" id="tabs">
+      <button data-tab="keys" class="on">API keys</button>
+      <button data-tab="users">Users</button>
+      <button data-tab="password">My password</button>
+      <button data-tab="about">About</button>
+    </div>
+    <div id="tab-about" hidden>
+      <p><b>Patchbay</b> <span id="aboutVersion"></span> — a headless router for
+        <a href="https://ndi.video/" target="_blank" rel="noopener">NDI®</a> sources.</p>
+      <p class="hint">NDI® is a registered trademark of Vizrt NDI AB. Patchbay is an independent
+        product; it is not affiliated with, sponsored or endorsed by Vizrt NDI AB.</p>
+      <p class="hint">Uses the NDI® SDK runtime (<span id="aboutRuntime">libndi</span>), which is licensed
+        separately by Vizrt NDI AB and is not included with Patchbay. NDI tools are available at
+        <a href="https://ndi.video/tools/" target="_blank" rel="noopener">ndi.video/tools</a>.</p>
+      <p class="hint">Licensed under the PolyForm Noncommercial License 1.0.0. Commercial use requires a
+        separate commercial license; see COMMERCIAL.md in the source repository.</p>
+    </div>
+    <div id="tab-keys">
+      <p class="hint">API keys are for REST/WebSocket control (Companion, Stream Deck, scripts). Send as
+        <code>Authorization: Bearer &lt;key&gt;</code> or <code>X-API-Key</code>. Keys can route, but cannot manage users or keys.</p>
+      <div id="newKey"></div>
+      <form class="row" id="keyForm" style="margin:10px 0">
+        <input id="keyName" placeholder="Key name, e.g. Companion" maxlength="100" required>
+        <button type="submit" class="primary">Create key</button>
+      </form>
+      <table class="tbl"><thead><tr><th>Name</th><th>Key</th><th>Created</th><th>Last used</th><th></th></tr></thead>
+        <tbody id="keyRows"></tbody></table>
+    </div>
+    <div id="tab-users" hidden>
+      <p class="hint">Users can log in to this web UI. All users have full access.</p>
+      <form id="userForm" style="display:flex;flex-wrap:wrap;gap:6px;margin:10px 0">
+        <input id="uName" placeholder="Username" maxlength="64" required autocomplete="off" style="flex:1 1 140px">
+        <input id="uPass" type="password" placeholder="Password (min 8)" required autocomplete="new-password" style="flex:1 1 140px">
+        <button type="submit" class="primary">Add user</button>
+      </form>
+      <table class="tbl"><thead><tr><th>Username</th><th>Created</th><th></th></tr></thead><tbody id="userRows"></tbody></table>
+    </div>
+    <form id="tab-password" hidden style="flex-direction:column;gap:8px">
+      <label class="f">Current password <input id="pCur" type="password" autocomplete="current-password" required></label>
+      <label class="f">New password <input id="pNew" type="password" autocomplete="new-password" required minlength="8"></label>
+      <label class="f">Repeat new password <input id="pNew2" type="password" autocomplete="new-password" required></label>
+      <p class="hint">Changing your password logs out your other sessions.</p>
+      <div class="row"><button type="submit" class="primary">Change password</button></div>
+    </form>
+  </div>
+</div>
+<div id="toasts"></div>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const state = { sources: [], outputs: [], presets: [], staged: {}, take: false };
+let me = null;
+
+// ------------------------------------------------------------- theme -- //
+const THEMES = { auto: "◐ Auto", light: "☀ Light", dark: "☾ Dark" };
+function applyTheme(t) {
+  if (t === "auto") delete document.documentElement.dataset.theme;
+  else document.documentElement.dataset.theme = t;
+  $("#themeBtn").textContent = THEMES[t];
+  $("#themeBtn").title = `Theme: ${t} (click to change)`;
+  try { t === "auto" ? localStorage.removeItem("patchbayTheme") : localStorage.setItem("patchbayTheme", t); } catch (e) {}
+}
+$("#themeBtn").onclick = () => {
+  const order = ["auto", "light", "dark"];
+  const cur = document.documentElement.dataset.theme || "auto";
+  applyTheme(order[(order.indexOf(cur) + 1) % order.length]);
+};
+applyTheme(document.documentElement.dataset.theme || "auto");
+
+function esc(s) { return String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+function toast(msg, err) {
+  const t = document.createElement("div"); t.className = "toast" + (err ? " err" : ""); t.textContent = msg;
+  $("#toasts").appendChild(t); setTimeout(() => t.remove(), err ? 5000 : 2500);
+}
+function detail(j) {
+  if (!j || j.detail == null) return "request failed";
+  if (Array.isArray(j.detail)) return j.detail.map(d => d.msg).join("; ");
+  return String(j.detail);
+}
+
+async function api(method, path, body) {
+  const headers = { "Content-Type": "application/json" };
+  const r = await fetch(path, { method, headers, credentials: "same-origin",
+    body: body === undefined ? undefined : JSON.stringify(body) });
+  if (r.status === 401 && !path.startsWith("/api/auth/")) { showLogin(); throw new Error("Please log in"); }
+  if (!r.ok) throw new Error(detail(await r.json().catch(() => null)));
+  return r.status === 204 ? null : r.json();
+}
+async function act(fn) { try { return await fn(); } catch (e) { toast(e.message, true); } }
+
+// ------------------------------------------------------------ dialog -- //
+function dialog({ title, body = "", ok = "OK", danger = false, onOk, focus }) {
+  $("#dlgTitle").textContent = title;
+  $("#dlgBody").innerHTML = body;
+  const okBtn = $("#dlgOk"); okBtn.textContent = ok;
+  okBtn.className = danger ? "danger solid" : "primary";
+  $("#dlg").hidden = false;
+  const f = focus ? $(focus) : okBtn; f && f.focus();
+  $("#dlgForm").onsubmit = async (e) => { e.preventDefault(); if ((await onOk()) !== false) $("#dlg").hidden = true; };
+}
+$("#dlgCancel").onclick = () => { $("#dlg").hidden = true; };
+document.addEventListener("keydown", e => {
+  if (e.key !== "Escape") return;
+  if (!$("#dlg").hidden) $("#dlg").hidden = true; else $("#settings").hidden = true;
+});
+
+// ------------------------------------------------------------- login -- //
+let setupMode = false;
+function showLogin(setup = setupMode) {
+  setupMode = setup;
+  me = null; disconnect(); setConn(false, "logged out");
+  $("#settings").hidden = true; $("#dlg").hidden = true;
+  $("#loginTitle").textContent = setup ? "Create admin account" : "Patchbay";
+  $("#loginHint").textContent = setup
+    ? "No users exist yet. Create the first account to secure this router."
+    : "Log in to continue.";
+  $("#loginHint").hidden = false;
+  $("#lPass2Wrap").hidden = !setup; $("#lPass2").required = setup;
+  $("#lPass").autocomplete = setup ? "new-password" : "current-password";
+  $("#loginBtn").textContent = setup ? "Create account" : "Log in";
+  $("#loginErr").textContent = ""; $("#lPass").value = ""; $("#lPass2").value = "";
+  $("#login").hidden = false; $("#lUser").focus();
+}
+$("#loginForm").onsubmit = async e => {
+  e.preventDefault();
+  const username = $("#lUser").value.trim(), password = $("#lPass").value;
+  if (setupMode && password !== $("#lPass2").value) { $("#loginErr").textContent = "Passwords do not match"; return; }
+  try {
+    const r = await api("POST", setupMode ? "/api/auth/setup" : "/api/auth/login", { username, password });
+    loggedIn(r.user);
+  } catch (err) {
+    $("#loginErr").textContent = err.message;
+    if (/already completed/.test(err.message)) showLogin(false);
+  }
+};
+function loggedIn(user) {
+  me = user; setupMode = false;
+  $("#whoami").textContent = user; $("#login").hidden = true;
+  reconnect();
+}
+$("#logoutBtn").onclick = async () => { await act(() => api("POST", "/api/auth/logout")); showLogin(false); };
+
+// ---------------------------------------------------------- settings -- //
+const fmtTime = t => t ? new Date(t * 1000).toLocaleString([], { dateStyle: "short", timeStyle: "short" }) : "never";
+function showTab(name) {
+  for (const b of $("#tabs").children) b.classList.toggle("on", b.dataset.tab === name);
+  for (const t of ["keys", "users", "password", "about"]) $("#tab-" + t).hidden = t !== name;
+  $("#tab-password").style.display = name === "password" ? "flex" : "";
+  if (name === "keys") loadKeys();
+  if (name === "users") loadUsers();
+  if (name === "about") fetch("/api/health").then(r => r.json()).then(h => {
+    $("#aboutVersion").textContent = "v" + h.version; $("#aboutRuntime").textContent = h.ndi_runtime;
+  }).catch(() => {});
+}
+$("#aboutLink").onclick = e => { e.preventDefault(); $("#newKey").innerHTML = ""; $("#settings").hidden = false; showTab("about"); };
+$("#tabs").onclick = e => { const b = e.target.closest("button[data-tab]"); if (b) showTab(b.dataset.tab); };
+$("#settingsBtn").onclick = () => { $("#newKey").innerHTML = ""; $("#settings").hidden = false; showTab("keys"); };
+$("#settingsClose").onclick = () => { $("#settings").hidden = true; $("#newKey").innerHTML = ""; };
+
+async function loadKeys() {
+  const keys = await act(() => api("GET", "/api/keys")); if (!keys) return;
+  $("#keyRows").innerHTML = keys.length ? keys.map(k => `<tr data-id="${esc(k.id)}">
+      <td>${esc(k.name)}</td><td><code>${esc(k.hint)}</code></td>
+      <td title="${esc(k.created_by ? "by " + k.created_by : "")}">${fmtTime(k.created_at)}</td>
+      <td>${fmtTime(k.last_used_at)}</td>
+      <td><button class="small danger" data-act="revoke">Revoke</button></td></tr>`).join("")
+    : '<tr><td colspan="5" class="hint">No API keys yet</td></tr>';
+}
+$("#keyForm").onsubmit = async e => {
+  e.preventDefault();
+  const k = await act(() => api("POST", "/api/keys", { name: $("#keyName").value }));
+  if (!k) return;
+  $("#keyName").value = "";
+  $("#newKey").innerHTML = `<div class="keybox"><b>New key “${esc(k.name)}”: copy it now, it won't be shown again.</b>
+    <code id="newKeyVal">${esc(k.key)}</code>
+    <div class="row" style="justify-content:flex-start"><button class="small primary" id="copyKey">Copy</button></div>
+    <span class="hint">Example: <code>curl -H "Authorization: Bearer ${esc(k.key)}" ${esc(location.origin)}/api/outputs</code></span></div>`;
+  $("#copyKey").onclick = () => copyText(k.key);
+  loadKeys();
+};
+async function copyText(t) {
+  try { await navigator.clipboard.writeText(t); toast("Copied"); }
+  catch (e) { const r = document.createRange(); r.selectNodeContents($("#newKeyVal"));
+    const s = getSelection(); s.removeAllRanges(); s.addRange(r); toast("Press Ctrl+C to copy"); }
+}
+$("#keyRows").onclick = e => {
+  const b = e.target.closest("button[data-act=revoke]"); if (!b) return;
+  const id = b.closest("tr").dataset.id, name = b.closest("tr").firstElementChild.textContent;
+  dialog({ title: `Revoke key “${name}”?`, ok: "Revoke", danger: true,
+    body: "<p style='margin:0'>Anything using this key loses access immediately.</p>",
+    onOk: async () => { await act(() => api("DELETE", `/api/keys/${encodeURIComponent(id)}`)); loadKeys(); } });
+};
+
+async function loadUsers() {
+  const users = await act(() => api("GET", "/api/users")); if (!users) return;
+  $("#userRows").innerHTML = users.map(u => `<tr data-user="${esc(u.username)}">
+      <td>${esc(u.username)}${u.username === me ? ' <span class="pill">you</span>' : ""}</td>
+      <td>${fmtTime(u.created_at)}</td>
+      <td>${u.username === me ? "" : '<button class="small" data-act="reset">Set password</button> <button class="small danger" data-act="del">Delete</button>'}</td></tr>`).join("");
+}
+$("#userForm").onsubmit = async e => {
+  e.preventDefault();
+  const r = await act(() => api("POST", "/api/users", { username: $("#uName").value, password: $("#uPass").value }));
+  if (r) { $("#uName").value = ""; $("#uPass").value = ""; toast(`Added ${r.username}`); loadUsers(); }
+};
+$("#userRows").onclick = e => {
+  const b = e.target.closest("button[data-act]"); if (!b) return;
+  const u = b.closest("tr").dataset.user, path = `/api/users/${encodeURIComponent(u)}`;
+  if (b.dataset.act === "del") dialog({ title: `Delete user “${u}”?`, ok: "Delete", danger: true,
+    onOk: async () => { await act(() => api("DELETE", path)); loadUsers(); } });
+  if (b.dataset.act === "reset") dialog({ title: `Set password for “${u}”`, ok: "Save", focus: "#rPass",
+    body: '<input id="rPass" type="password" placeholder="New password (min 8)" autocomplete="new-password" style="width:100%"><p class="hint" style="margin-top:6px">This logs the user out everywhere.</p>',
+    onOk: async () => (await act(() => api("PUT", path + "/password", { password: $("#rPass").value }))) !== undefined });
+};
+$("#tab-password").onsubmit = async e => {
+  e.preventDefault();
+  if ($("#pNew").value !== $("#pNew2").value) { toast("New passwords do not match", true); return; }
+  const r = await act(() => api("POST", "/api/auth/password",
+    { current_password: $("#pCur").value, new_password: $("#pNew").value }));
+  if (r !== undefined) { for (const id of ["#pCur", "#pNew", "#pNew2"]) $(id).value = ""; toast("Password changed"); }
+};
+
+// ------------------------------------------------------------ render -- //
+let renderQueued = false;
+function render() {
+  // Don't rebuild a dropdown the user currently has open.
+  const a = document.activeElement;
+  if (a && a.tagName === "SELECT" && a.closest("#outputs")) { renderQueued = true; return; }
+  renderQueued = false;
+  renderOutputs(); renderSources(); renderPresets(); renderTakebar();
+}
+document.addEventListener("focusout", () => setTimeout(() => renderQueued && render(), 0));
+
+function sourceOptions(current) {
+  const names = state.sources.map(s => s.name);
+  let html = '<option value="">— none —</option>';
+  if (current && !names.includes(current)) html += `<option value="${esc(current)}">${esc(current)} (offline)</option>`;
+  for (const s of state.sources) html += `<option value="${esc(s.name)}">${esc(s.name)}${s.router_output ? " ↺" : ""}</option>`;
+  return html;
+}
+
+function renderOutputs() {
+  const el = $("#outputs");
+  if (!state.outputs.length) {
+    el.innerHTML = '<div class="empty">No outputs yet. Click <b>+ Output</b> to create a routed NDI output.</div>';
+    return;
+  }
+  el.innerHTML = state.outputs.map(o => {
+    const staged = Object.prototype.hasOwnProperty.call(state.staged, o.id);
+    const shown = staged ? state.staged[o.id] : o.source;
+    const pill = staged ? '<span class="pill staged">staged</span>'
+      : o.status === "error"
+        ? '<span class="pill error" title="NDI output could not be created, so clients cannot see it. Retrying; check that avahi-daemon is running.">not advertised</span>'
+        : `<span class="pill ${o.status}">${o.status}</span>`;
+    return `<div class="card ${o.status} ${staged ? "staged" : ""}" data-id="${esc(o.id)}">
+      <div class="top"><div style="flex:1;min-width:0">
+        <div class="title">${esc(o.name)}</div><div class="sub">${esc(o.ndi_name)}</div></div>${pill}</div>
+      <select data-act="route" aria-label="Source for ${esc(o.name)}">${sourceOptions(shown)}</select>
+      <div class="meta"><span title="Receivers connected to this output">👁 ${o.connections}</span>
+        ${o.groups ? `<span>groups: ${esc(o.groups)}</span>` : ""}
+        <span class="actions">
+          <button class="small" data-act="clear" ${o.source ? "" : "disabled"}>Clear</button>
+          <button class="small" data-act="edit">Edit</button>
+          <button class="small danger" data-act="delete">Delete</button></span></div></div>`;
+  }).join("");
+  state.outputs.forEach(o => {
+    const sel = el.querySelector(`.card[data-id="${CSS.escape(o.id)}"] select`);
+    const staged = Object.prototype.hasOwnProperty.call(state.staged, o.id);
+    sel.value = (staged ? state.staged[o.id] : o.source) || "";
+  });
+}
+
+function renderSources() {
+  $("#srcCount").textContent = `(${state.sources.length})`;
+  $("#sources").innerHTML = state.sources.length
+    ? state.sources.map(s => `<li title="${esc(s.url || "")}"><span class="dot ok"></span><span class="name">${esc(s.name)}</span>${s.router_output ? '<span class="pill">router</span>' : ""}</li>`).join("")
+    : '<li style="color:var(--muted)">No sources discovered</li>';
+}
+
+function renderPresets() {
+  $("#presets").innerHTML = state.presets.length
+    ? state.presets.map(p => `<li data-id="${esc(p.id)}"><span class="name" title="${esc(Object.keys(p.routes).length)} routes">${esc(p.name)}</span>
+        <button class="small primary" data-act="recall">Recall</button>
+        <button class="small" data-act="overwrite" title="Overwrite with current routing">Update</button>
+        <button class="small danger" data-act="delete" aria-label="Delete preset">✕</button></li>`).join("")
+    : '<li style="color:var(--muted)">No presets</li>';
+}
+
+function renderTakebar() {
+  const n = Object.keys(state.staged).length;
+  $("#takebar").hidden = !state.take;
+  $("#takeCount").textContent = n ? `${n} change${n > 1 ? "s" : ""} staged` : "Nothing staged";
+  $("#takeBtn").disabled = !n; $("#discardBtn").disabled = !n;
+}
+
+// ------------------------------------------------------------ events -- //
+$("#outputs").addEventListener("change", e => {
+  if (e.target.dataset.act !== "route") return;
+  const id = e.target.closest(".card").dataset.id;
+  const src = e.target.value || null;
+  if (state.take) {
+    const o = state.outputs.find(x => x.id === id);
+    if ((o.source || null) === src) delete state.staged[id]; else state.staged[id] = src;
+    e.target.blur(); render();
+  } else {
+    e.target.blur();
+    act(() => api("PUT", `/api/outputs/${encodeURIComponent(id)}/route`, { source: src }));
+  }
+});
+$("#outputs").addEventListener("click", e => {
+  const b = e.target.closest("button[data-act]"); if (!b) return;
+  const id = b.closest(".card").dataset.id;
+  const o = state.outputs.find(x => x.id === id);
+  if (b.dataset.act === "clear") act(() => api("DELETE", `/api/outputs/${encodeURIComponent(id)}/route`));
+  if (b.dataset.act === "delete") dialog({
+    title: `Delete “${o.name}”?`, ok: "Delete", danger: true,
+    body: "<p style='margin:0'>The NDI output disappears and connected receivers lose it.</p>",
+    onOk: () => act(() => api("DELETE", `/api/outputs/${encodeURIComponent(id)}`)),
+  });
+  if (b.dataset.act === "edit") dialog({
+    title: "Edit output", ok: "Save", focus: "#fName",
+    body: outputForm(o.name, o.groups) + "<p style='margin:6px 0 0;color:var(--muted);font-size:12px'>Renaming recreates the NDI source; receivers reconnect.</p>",
+    onOk: async () => (await act(() => api("PATCH", `/api/outputs/${encodeURIComponent(id)}`,
+      { name: $("#fName").value, groups: $("#fGroups").value }))) !== undefined,
+  });
+});
+function outputForm(name = "", groups = "") {
+  return `<div style="display:flex;flex-direction:column;gap:8px">
+    <input id="fName" placeholder="Name, e.g. Program" value="${esc(name)}" maxlength="100" required>
+    <input id="fGroups" placeholder="NDI groups (optional, comma-separated)" value="${esc(groups || "")}"></div>`;
+}
+$("#addBtn").onclick = () => dialog({
+  title: "New output", ok: "Create", focus: "#fName", body: outputForm(),
+  onOk: async () => (await act(() => api("POST", "/api/outputs",
+    { name: $("#fName").value, groups: $("#fGroups").value || null }))) !== undefined,
+});
+
+$("#takeMode").onchange = e => { state.take = e.target.checked; if (!state.take) state.staged = {}; render(); };
+$("#discardBtn").onclick = () => { state.staged = {}; render(); };
+$("#takeBtn").onclick = async () => {
+  const routes = Object.entries(state.staged).map(([output, source]) => ({ output, source }));
+  if (await act(() => api("POST", "/api/routes", { routes })) !== undefined) { state.staged = {}; render(); toast("Taken"); }
+};
+
+$("#presetForm").onsubmit = async e => {
+  e.preventDefault();
+  const name = $("#presetName").value.trim(); if (!name) return;
+  if (await act(() => api("POST", "/api/presets", { name })) !== undefined) { $("#presetName").value = ""; toast(`Saved “${name}”`); }
+};
+$("#presets").addEventListener("click", e => {
+  const b = e.target.closest("button[data-act]"); if (!b) return;
+  const id = b.closest("li").dataset.id; const p = state.presets.find(x => x.id === id);
+  const path = `/api/presets/${encodeURIComponent(id)}`;
+  if (b.dataset.act === "recall") act(async () => { await api("POST", path + "/recall"); toast(`Recalled “${p.name}”`); });
+  if (b.dataset.act === "overwrite") dialog({ title: `Update “${p.name}”?`, ok: "Update",
+    body: "<p style='margin:0'>Replace this preset with the current routing.</p>",
+    onOk: () => act(() => api("PUT", path, { snapshot: true })) });
+  if (b.dataset.act === "delete") dialog({ title: `Delete preset “${p.name}”?`, ok: "Delete", danger: true,
+    onOk: () => act(() => api("DELETE", path)) });
+});
+
+// --------------------------------------------------------- websocket -- //
+let ws = null, retry = 0, retryTimer = null;
+function setConn(ok, text) { $("#connDot").className = "dot " + (ok ? "ok" : "bad"); $("#connText").textContent = text; }
+function disconnect() { if (ws) { ws.onclose = null; ws.close(); ws = null; } clearTimeout(retryTimer); }
+function reconnect() { disconnect(); connect(); }
+function connect() {
+  const proto = location.protocol === "https:" ? "wss:" : "ws:";
+  ws = new WebSocket(`${proto}//${location.host}/api/ws`);
+  ws.onopen = () => { retry = 0; setConn(true, "live"); };
+  ws.onmessage = ev => {
+    const m = JSON.parse(ev.data);
+    if (m.type === "ping") return;
+    if (m.sources) state.sources = m.sources;
+    if (m.outputs) {
+      state.outputs = m.outputs;
+      for (const id of Object.keys(state.staged)) if (!m.outputs.some(o => o.id === id)) delete state.staged[id];
+    }
+    if (m.presets) state.presets = m.presets;
+    render();
+  };
+  ws.onclose = ev => {
+    if (ev.code === 4401) { checkAuth(); return; }
+    setConn(false, "reconnecting…");
+    retryTimer = setTimeout(connect, Math.min(10000, 500 * 2 ** retry++));
+  };
+}
+async function checkAuth() {
+  try {
+    const r = await (await fetch("/api/auth/me", { credentials: "same-origin" })).json();
+    if (r.user) loggedIn(r.user); else showLogin(r.setup_required);
+  } catch (e) { setConn(false, "server unreachable"); retryTimer = setTimeout(checkAuth, 3000); }
+}
+render();
+checkAuth();
+</script>
+</body>
+</html>
